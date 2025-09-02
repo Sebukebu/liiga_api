@@ -2,7 +2,7 @@ import requests
 import pandas as pd
 import json
 from typing import Optional, Dict, Any, Literal
-from utils import flatten_dict
+from liiga_api.utils import flatten_dict
 
 
 
