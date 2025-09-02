@@ -331,7 +331,6 @@ class GameStatsBase(Endpoint):
                     "team_side": side.replace("Team", "").lower(),
                     "team_id": period.get("teamId").split(":")[0],
                     "team_name": period.get("teamId").split(":")[1],
-                    "period_number": period_number,
                     "team_goals": period.get("goals"),
                     "team_shots": period.get("shots"),
                     "team_penalty_minutes": period.get("penaltyMinutes"),
@@ -363,7 +362,12 @@ class GameStatsBase(Endpoint):
                     for k, v in player.items():
                         if k in ["playerId", "jerseyId", "teamId"]:
                             continue
-                        if isinstance(v, (int, float)):
+                        if k == "period_number":
+                            # Keep the max period_number instead of summing
+                            player_totals[player_id][k] = max(
+                                player_totals[player_id].get(k, 0), v if isinstance(v, int) else 0
+                            )
+                        elif isinstance(v, (int, float)):
                             player_totals[player_id][k] = player_totals[player_id].get(k, 0) + v
                         else:
                             player_totals[player_id][k] = v  # take last non-numeric value
