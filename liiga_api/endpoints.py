@@ -296,14 +296,18 @@ class GameInfo(Endpoint):
         super().__init__(endpoint_name="GameInfo", url_str=url_str)
 
 
-class GameSkaterStats(Endpoint):
+class GameStatsBase(Endpoint):
+    """Base class for game stats, handles parsing by period or summed totals."""
+
+    PLAYER_STATS_KEY: str  # must be set in subclasses
+    ENDPOINT_NAME: str     # must be set in subclasses
+
     def __init__(self, game_id: str, season: str, summed: bool = True):
         if not isinstance(summed, bool):
             raise ValueError(f"Invalid parameter for summed: {summed}.")
-        
         self.summed = summed
         url_str: str = f"games/stats/{season}/{game_id}"
-        super().__init__(endpoint_name="GameSkaterStats", url_str=url_str)
+        super().__init__(endpoint_name=self.ENDPOINT_NAME, url_str=url_str)
 
     def _parse(self):
         return self._parse_sum_players() if self.summed else self._parse_by_period()
@@ -314,17 +318,20 @@ class GameSkaterStats(Endpoint):
                 f"Unexpected response type for {self.endpoint_name}: {type(self.response)}"
             )
 
-        periods_out = {1: [], 2: [], 3: []}
-
+        periods_out = {}
 
         for side in ["homeTeam", "awayTeam"]:
             team_periods = self.response.get(side, [])
             for period in team_periods:
+                period_number = period.get("period")
+                if period_number not in periods_out:
+                    periods_out[period_number] = []
+
                 team_context = {
                     "team_side": side.replace("Team", "").lower(),
                     "team_id": period.get("teamId").split(":")[0],
                     "team_name": period.get("teamId").split(":")[1],
-                    "period_number": period.get("period"),
+                    "period_number": period_number,
                     "team_goals": period.get("goals"),
                     "team_shots": period.get("shots"),
                     "team_penalty_minutes": period.get("penaltyMinutes"),
@@ -333,10 +340,10 @@ class GameSkaterStats(Endpoint):
                     "team_shorthanded_goals_against": period.get("shortHandedGoalsAgainst"),
                 }
 
-                for player in period.get("periodPlayerStats", []):
+                for player in period.get(self.PLAYER_STATS_KEY, []):
                     flattened = flatten_dict(player)
                     flattened.update(team_context)
-                    periods_out[team_context["period_number"]].append(flattened)
+                    periods_out[period_number].append(flattened)
 
         return [periods_out[p] for p in sorted(periods_out.keys()) if periods_out[p]]
 
@@ -362,74 +369,16 @@ class GameSkaterStats(Endpoint):
                             player_totals[player_id][k] = v  # take last non-numeric value
 
         return list(player_totals.values())
-                
-
-class GameGoalieStats(Endpoint):
-    def __init__(self, game_id: str, season: str, summed: bool = True):
-        if not isinstance(summed, bool):
-            raise ValueError(f"Invalid parameter for summed: {summed}.")
-        
-        self.summed = summed
-        url_str: str = f"games/stats/{season}/{game_id}"
-        super().__init__(endpoint_name="GameGoalieStats", url_str=url_str)
-
-    def _parse(self):
-        return self._parse_sum_players() if self.summed else self._parse_by_period()
-
-    def _parse_by_period(self) -> list[list[dict]]:
-        if not isinstance(self.response, dict):
-            raise LiigaAPIError(
-                f"Unexpected response type for {self.endpoint_name}: {type(self.response)}"
-            )
-
-        periods_out = {1: [], 2: [], 3: []}
 
 
-        for side in ["homeTeam", "awayTeam"]:
-            team_periods = self.response.get(side, [])
-            for period in team_periods:
-                team_context = {
-                    "team_side": side.replace("Team", "").lower(),
-                    "team_id": period.get("teamId").split(":")[0],
-                    "team_name": period.get("teamId").split(":")[1],
-                    "period_number": period.get("period"),
-                    "team_goals": period.get("goals"),
-                    "team_shots": period.get("shots"),
-                    "team_penalty_minutes": period.get("penaltyMinutes"),
-                    "team_faceoff_wins": period.get("faceOffWins"),
-                    "team_powerplay_goals": period.get("powerPlayGoals"),
-                    "team_shorthanded_goals_against": period.get("shortHandedGoalsAgainst"),
-                }
+class GameSkaterStats(GameStatsBase):
+    PLAYER_STATS_KEY = "periodPlayerStats"
+    ENDPOINT_NAME = "GameSkaterStats"
 
-                for player in period.get("goaliePeriodStats", []):
-                    flattened = flatten_dict(player)
-                    flattened.update(team_context)
-                    periods_out[team_context["period_number"]].append(flattened)
 
-        return [periods_out[p] for p in sorted(periods_out.keys()) if periods_out[p]]
-
-    def _parse_sum_players(self) -> list[dict]:
-        by_period = self._parse_by_period()
-        player_totals: dict[str, dict] = {}
-
-        for period in by_period:
-            for player in period:
-                player_id = player.get("playerId")
-                if player_id is None:
-                    continue
-
-                if player_id not in player_totals:
-                    player_totals[player_id] = player.copy()
-                else:
-                    for k, v in player.items():
-                        if k in ["playerId", "jerseyId", "teamId"]:
-                            continue
-                        if isinstance(v, (int, float)):
-                            player_totals[player_id][k] = player_totals[player_id].get(k, 0) + v
-                        else:
-                            player_totals[player_id][k] = v  # take last non-numeric value
-
-        return list(player_totals.values())
+class GameGoalieStats(GameStatsBase):
+    PLAYER_STATS_KEY = "goaliePeriodStats"
+    ENDPOINT_NAME = "GameGoalieStats"
 
 
 class GameShotMap(Endpoint):
