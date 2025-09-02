@@ -362,8 +362,8 @@ class GameStatsBase(Endpoint):
                     for k, v in player.items():
                         if k in ["playerId", "jerseyId", "teamId"]:
                             continue
-                        if k == "period_number":
-                            # Keep the max period_number instead of summing
+                        if k == "period":
+                            # Keep the max period instead of summing
                             player_totals[player_id][k] = max(
                                 player_totals[player_id].get(k, 0), v if isinstance(v, int) else 0
                             )
