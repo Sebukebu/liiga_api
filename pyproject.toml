@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=61.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "liiga_api"
+version = "0.1.0"
+requires-python = ">=3.8"
+description = "An unofficial Python wrapper for the Finnish Liiga hockey league API"
+readme = "README.md"
+authors = [{name = "Severi Koponen"}]
+dependencies = [
+    "requests>=2.31.0",
+    "pandas>=2.0.0",
+]
