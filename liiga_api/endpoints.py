@@ -270,6 +270,34 @@ class PlayersAdvanced(Endpoint):
 
 # GAMES RESULTS AND SCHEDULE ENDPOINTS 
 
+
+class GamesSimpleResults(Endpoint):
+    GAMETYPE_OPTIONS = {
+        "regularseason": "runkosarja",
+        "playoff": "playoffs",
+        "preseason": "valmistavat_ottelut",
+        "playout": "playout",
+        "qualification": "qualifications",
+        "chl": "chl"
+    }
+    gametype_literal = Literal["regularseason", "playoff", "preseason", "playout", "qualification", "chl"]
+    def __init__(self, season: str, gametype: gametype_literal = "regularseason"):
+        if gametype not in self.GAMETYPE_OPTIONS:
+            raise ValueError(f"Invalid gametype: {gametype}. Choose one of {list(self.GAMETYPE_OPTIONS.keys())}")
+        gtype = self.GAMETYPE_OPTIONS[gametype]
+        url_str: str = f"schedule?tournament={gtype}&season={season}"
+        super().__init__(endpoint_name="GamesSimpleResults", url_str=url_str)
+
+    def _parse(self) -> list[dict]:
+        if not isinstance(self.response, list):
+            raise LiigaAPIError(f"Unexpected response type for {self.endpoint_name}: {type(self.response)}")
+        
+        results = []
+        data = self.response
+        for item in data:
+            results.append(flatten_dict(item))
+        return results
+
 class GamesResults(Endpoint):
     GAMETYPE_OPTIONS = {
         "regularseason": "runkosarja",
@@ -285,7 +313,7 @@ class GamesResults(Endpoint):
             raise ValueError(f"Invalid gametype: {gametype}. Choose one of {list(self.GAMETYPE_OPTIONS.keys())}")
         gtype = self.GAMETYPE_OPTIONS[gametype]
         url_str: str = f"games?tournament={gtype}&season={season}"
-        super().__init__(endpoint_name="GameResults", url_str=url_str)
+        super().__init__(endpoint_name="GamesResults", url_str=url_str)
 
 
 # GAMESTAT ENDPOINTS

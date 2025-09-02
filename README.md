@@ -3,7 +3,7 @@
 An unofficial Python wrapper for the Finnish Liiga hockey league API.
 Meant for personal analytics and exploration purposes.
 
-Note: This package is in early development. APIs may change.
+Note: This package is in early development. APIs may change. Many endpoints are still under construction.
 
 ## Installation
 
