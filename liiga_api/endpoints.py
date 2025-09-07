@@ -295,7 +295,11 @@ class GamesSimpleResults(Endpoint):
         results = []
         data = self.response
         for item in data:
-            results.append(flatten_dict(item, skip_keys="iceRink_id"))
+                        # Rename 'id' in 'iceRink' to 'iceRink_id'
+            if "iceRink" in item and isinstance(item["iceRink"], dict):
+                item["iceRink"]["iceRink_id"] = item["iceRink"].pop("id")
+            flattened = flatten_dict(item)
+            results.append(flattened)
         return results
 
 class GamesResults(Endpoint):
