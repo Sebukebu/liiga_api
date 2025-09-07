@@ -295,7 +295,7 @@ class GamesSimpleResults(Endpoint):
         results = []
         data = self.response
         for item in data:
-            results.append(flatten_dict(item, parent_key="iceRink_id"))
+            results.append(flatten_dict(item, skip_keys="iceRink_id"))
         return results
 
 class GamesResults(Endpoint):
