@@ -291,16 +291,19 @@ class GamesSimpleResults(Endpoint):
     def _parse(self) -> list[dict]:
         if not isinstance(self.response, list):
             raise LiigaAPIError(f"Unexpected response type for {self.endpoint_name}: {type(self.response)}")
-        
+
         results = []
         data = self.response
         for item in data:
-                        # Rename 'id' in 'iceRink' to 'iceRink_id'
+            # Rename 'id' to 'rinkId' in 'iceRink' to avoid collision
             if "iceRink" in item and isinstance(item["iceRink"], dict):
-                item["iceRink"]["iceRink_id"] = item["iceRink"].pop("id")
+                item["iceRink"]["rinkId"] = item["iceRink"].pop("id")
+
+            # Now flatten the item
             flattened = flatten_dict(item)
             results.append(flattened)
         return results
+
 
 class GamesResults(Endpoint):
     GAMETYPE_OPTIONS = {
