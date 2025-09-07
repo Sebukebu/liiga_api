@@ -299,11 +299,10 @@ class GamesSimpleResults(Endpoint):
             if "iceRink" in item and isinstance(item["iceRink"], dict):
                 item["iceRink"]["rinkId"] = item["iceRink"].pop("id")
 
-            # Now flatten the item
+            # Flatten the item
             flattened = flatten_dict(item)
             results.append(flattened)
         return results
-
 
 class GamesResults(Endpoint):
     GAMETYPE_OPTIONS = {
