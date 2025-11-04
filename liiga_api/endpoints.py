@@ -1,3 +1,4 @@
+import functools
 import requests
 import pandas as pd
 import json
@@ -10,6 +11,19 @@ class LiigaAPIError(Exception):
     """Custom exception for Liiga API errors."""
 
 class Endpoint:
+    """Base class for LiigaAPI endpoints.
+
+    This provides the basic functionality and methods shared across all endpoints.    
+
+        Attributes:
+        BASE_URL (str): The base URL for the Liiga API.
+        endpoint_name (str): The name of the endpoint (e.g., "PlayersBasicStats", "Standings").
+        url_str (str): The URL path for the endpoint (e.g., "players/info/40311015/games/2024").
+        params (Dict): Query parameters for the API request.
+        response: The raw JSON response from the API. Lazy loaded when users wants to access data
+        data: The parsed data, ready for use. Lazy loaded when users wants to access data
+    """
+
     BASE_URL: str = "https://liiga.fi/api/v2"
     
     
@@ -17,18 +31,23 @@ class Endpoint:
         self.endpoint_name: str = endpoint_name
         self.url_str: str = url_str
         self.params: Dict = params
-        self.response: Dict = self._get()
-        self.data: Any = self._parse()
 
-    def _get(self) -> Dict:
+
+    @functools.cached_property
+    def response(self) -> Dict:
+        """Fetches and caches the API response."""
         try:
-            url: str = f"{self.BASE_URL}/{self.url_str}"
-            response: requests.Response = requests.get(url, params=self.params)
+            url = f"{self.BASE_URL}/{self.url_str}"
+            response = requests.get(url, params=self.params)
             response.raise_for_status()
-            
+            return response.json()
         except requests.RequestException as e:
             raise LiigaAPIError(f"Error fetching {self.endpoint_name}: {e}") from e
-        return response.json()
+
+    @functools.cached_property
+    def data(self) -> Any:
+        """Parses and caches the API response."""
+        return self._parse()
     
     def _parse(self) -> Optional[Any]:
         # Default parse for simple endpoints
@@ -39,6 +58,8 @@ class Endpoint:
             raise LiigaAPIError(f"Error parsing {self.endpoint_name}: {e}") from e
 
     def get_data_frame(self) -> Any:
+        """Returns parsed dataframe of the endpoints response
+        Returns a single dataframe or a list of dataframes based on endpoint and parameters"""
         # Returns multiple dataframes if data is a list of list of dicts
         if isinstance(self.data, list) and self.data and isinstance(self.data[0], list):
             
@@ -48,16 +69,25 @@ class Endpoint:
             return pd.DataFrame(self.data)
     
     def get_json(self) -> str:
+        """Return parsed json string(s) of the endpoints response"""
         return json.dumps(self.data, indent=2)
     
     def get_dict(self) -> Any:
+        """Return parsed dictionary or dictionaries of the endpoints response"""
         return self.data
+    
+    def get_response(self) -> Any:
+        """Return raw unparsed response for debugging or own implementations."""
+        return self.response
     
 
 
 # PLAYER ENDPOINTS
 
 class PlayerGameLog(Endpoint):
+    """Fetches and parses game-by-game statistics for a Liiga player.
+    """
+
     GAMETYPE_OPTIONS = {
         "regularseason": "regular",
         "playoff": "playoffs",
@@ -95,29 +125,44 @@ class PlayerGameLog(Endpoint):
 
 
 class PlayerInfo(Endpoint):
+    """Fetches and parses basic information for a Liiga player.
+
+    **Note:** This endpoint is not yet implemented. Check back for updates.
+    """
+
     def __init__(self, player_id: str):
         url_str: str = f"players/info/{player_id}"
         super().__init__(endpoint_name="PlayerInfo", url_str=url_str)
+        raise NotImplementedError("This endpoint is not yet implemented.")
 
 
 # PLAYERS SUMMED STATS
 
 class AllPlayers(Endpoint):
+    """Fetches and parses aggregated statistics for all Liiga players across a range of seasons.
+    """
+
     GAMETYPE_OPTIONS = {
         "regularseason": "runkosarja",
         "playoff": "playoffs"
     }
     gametype_literal = Literal["regularseason", "playoff"]
 
-    def __init__(self, gametype: gametype_literal = "regularseason"):
+    def __init__(self, start_season: str = "1976", end_season:str = "2026", gametype: gametype_literal = "regularseason"):
         if gametype not in self.GAMETYPE_OPTIONS:
             raise ValueError(f"Invalid gametype: {gametype}. Choose one of {list(self.GAMETYPE_OPTIONS.keys())}")
         gtype = self.GAMETYPE_OPTIONS[gametype]
-        url_str: str = f"players/stats/summed/1976/2025/{gtype}/false?team=&dataType=all&splitTeams=true"
+        url_str: str = f"players/stats/summed/{start_season}/{end_season}/{gtype}/false?team=&dataType=all&splitTeams=true"
         super().__init__(endpoint_name="AllPlayers", url_str=url_str)
 
 
 class PlayersBasicStats(Endpoint):
+    """Fetches and parses basic statistics for Liiga players.
+
+    See docs/players_basic_stats.md for detailed documentation and examples.
+    """
+
+
     GAMETYPE_OPTIONS = {
         "regularseason": "runkosarja",
         "playoff": "playoffs",
@@ -128,15 +173,40 @@ class PlayersBasicStats(Endpoint):
 
     gametype_literal = Literal["regularseason", "playoff", "preseason", "playout", "qualification"]
 
-    def __init__(self, season: str, gametype: gametype_literal = "regularseason", team_id: str | None = None):
+    def __init__(self, start_season: str, end_season: str ,gametype: gametype_literal = "regularseason", team_id: str | None = None, summed: bool = True):
         if gametype not in self.GAMETYPE_OPTIONS:
             raise ValueError(f"Invalid gametype: {gametype}. Choose one of {list(self.GAMETYPE_OPTIONS.keys())}")
         gtype = self.GAMETYPE_OPTIONS[gametype]
-        url_str: str = f"players/stats/summed/{season}/{season}/{gtype}/false?team={team_id}&dataType=basicStats&splitTeams=true"
+        self.summed = summed
+        url_str: str = f"players/stats/summed/{start_season}/{end_season}/{gtype}/false?team={team_id}&dataType=basicStats&splitTeams=true"
         super().__init__(endpoint_name="PlayersBasicStats", url_str=url_str)
 
 
+    def _parse(self) -> list[dict]:
+
+        players = []
+
+        for player_data in self.response:
+            if self.summed:
+                players.append(player_data)
+            else:
+                # If the player has played for multiple teams, use the nested team stats
+                if player_data.get("previousTeamsForTournament"):
+                    for team_data in player_data["previousTeamsForTournament"]:
+                        players.append(team_data)
+                # If the player has only played for one team, use the top-level data
+                else:
+                    players.append(player_data)
+
+        return players
+
+
 class PlayersGoals(Endpoint):
+    """Fetches and parses goal-specific statistics for Liiga players.
+
+    See docs/players_goals.md for detailed documentation and examples.
+    """
+
     GAMETYPE_OPTIONS = {
         "regularseason": "runkosarja",
         "playoff": "playoffs",
@@ -147,15 +217,37 @@ class PlayersGoals(Endpoint):
 
     gametype_literal = Literal["regularseason", "playoff", "preseason", "playout", "qualification"]
 
-    def __init__(self, season: str, gametype: gametype_literal = "regularseason"):
+    def __init__(self, start_season: str, end_season: str,gametype: gametype_literal = "regularseason", summed: bool = True):
         if gametype not in self.GAMETYPE_OPTIONS:
             raise ValueError(f"Invalid gametype: {gametype}. Choose one of {list(self.GAMETYPE_OPTIONS.keys())}")
         gtype = self.GAMETYPE_OPTIONS[gametype]
-        url_str: str = f"players/stats/summed/{season}/{season}/{gtype}/false?team=&dataType=goalStats&splitTeams=true"
+        self.summed = summed
+        url_str: str = f"players/stats/summed/{start_season}/{end_season}/{gtype}/false?team=&dataType=goalStats&splitTeams=true"
         super().__init__(endpoint_name="PlayersGoals", url_str=url_str)
 
 
+    def _parse(self) -> list[dict]:
+        players = []
+
+        for player_data in self.response:
+            if self.summed:
+                players.append(player_data)
+            else:
+                if player_data.get("previousTeamsForTournament"):
+                    for team_data in player_data["previousTeamsForTournament"]:
+                        players.append(team_data)
+                else:
+                    players.append(player_data)
+
+        return players
+
+
 class PlayersShots(Endpoint):
+    """Fetches and parses shot-specific statistics for Liiga players.
+
+    See docs/players_shots.md for detailed documentation and examples.
+    """
+
     GAMETYPE_OPTIONS = {
         "regularseason": "runkosarja",
         "playoff": "playoffs",
@@ -166,15 +258,36 @@ class PlayersShots(Endpoint):
 
     gametype_literal = Literal["regularseason", "playoff", "preseason", "playout", "qualification"]
 
-    def __init__(self, season: str, gametype: gametype_literal = "regularseason"):
+    def __init__(self, start_season: str, end_season: str, gametype: gametype_literal = "regularseason", summed: bool = True):
         if gametype not in self.GAMETYPE_OPTIONS:
             raise ValueError(f"Invalid gametype: {gametype}. Choose one of {list(self.GAMETYPE_OPTIONS.keys())}")
         gtype = self.GAMETYPE_OPTIONS[gametype]
-        url_str: str = f"players/stats/summed/{season}/{season}/{gtype}/false?team=&dataType=shotStats&splitTeams=true"
+        self.summed = summed
+        url_str: str = f"players/stats/summed/{start_season}/{end_season}/{gtype}/false?team=&dataType=shotStats&splitTeams=true"
         super().__init__(endpoint_name="PlayersShots", url_str=url_str)
+
+    
+    def _parse(self) -> list[dict]:
+        players = []
+
+        for player_data in self.response:
+            if self.summed:
+                players.append(player_data)
+            else:
+                if player_data.get("previousTeamsForTournament"):
+                    for team_data in player_data["previousTeamsForTournament"]:
+                        players.append(team_data)
+                else:
+                    players.append(player_data)
+
+        return players
 
 
 class PlayersPasses(Endpoint):
+    """Fetches and parses pass-specific statistics for Liiga players.
+
+    See docs/players_passes.md for detailed documentation and examples.
+    """
     GAMETYPE_OPTIONS = {
         "regularseason": "runkosarja",
         "playoff": "playoffs",
@@ -185,15 +298,36 @@ class PlayersPasses(Endpoint):
 
     gametype_literal = Literal["regularseason", "playoff", "preseason", "playout", "qualification"]
 
-    def __init__(self, season: str, gametype: gametype_literal = "regularseason"):
+    def __init__(self, start_season: str, end_season: str, gametype: gametype_literal = "regularseason", summed: bool = True):
         if gametype not in self.GAMETYPE_OPTIONS:
             raise ValueError(f"Invalid gametype: {gametype}. Choose one of {list(self.GAMETYPE_OPTIONS.keys())}")
         gtype = self.GAMETYPE_OPTIONS[gametype]
-        url_str: str = f"players/stats/summed/{season}/{season}/{gtype}/false?team=&dataType=passes&splitTeams=true"
+        self.summed = summed
+        url_str: str = f"players/stats/summed/{start_season}/{end_season}/{gtype}/false?team=&dataType=passes&splitTeams=true"
         super().__init__(endpoint_name="PlayersPasses", url_str=url_str)
+
+    
+    def _parse(self) -> list[dict]:
+        players = []
+
+        for player_data in self.response:
+            if self.summed:
+                players.append(player_data)
+            else:
+                if player_data.get("previousTeamsForTournament"):
+                    for team_data in player_data["previousTeamsForTournament"]:
+                        players.append(team_data)
+                else:
+                    players.append(player_data)
+
+        return players
 
 
 class PlayersPenalties(Endpoint):
+    """Fetches and parses penalty-specific statistics for Liiga players.
+
+    See docs/players_penalties.md for detailed documentation and examples.
+    """
     GAMETYPE_OPTIONS = {
         "regularseason": "runkosarja",
         "playoff": "playoffs",
@@ -204,15 +338,36 @@ class PlayersPenalties(Endpoint):
 
     gametype_literal = Literal["regularseason", "playoff", "preseason", "playout", "qualification"]
 
-    def __init__(self, season: str, gametype: gametype_literal = "regularseason"):
+    def __init__(self, start_season: str, end_season: str, gametype: gametype_literal = "regularseason", summed: bool = True):
         if gametype not in self.GAMETYPE_OPTIONS:
             raise ValueError(f"Invalid gametype: {gametype}. Choose one of {list(self.GAMETYPE_OPTIONS.keys())}")
         gtype = self.GAMETYPE_OPTIONS[gametype]
-        url_str: str = f"players/stats/summed/{season}/{season}/{gtype}/false?team=&dataType=penaltyStats&splitTeams=true"
+        self.summed = summed
+        url_str: str = f"players/stats/summed/{start_season}/{end_season}/{gtype}/false?team=&dataType=penaltyStats&splitTeams=true"
         super().__init__(endpoint_name="PlayersPenalties", url_str=url_str)
 
 
+    def _parse(self) -> list[dict]:
+        players = []
+
+        for player_data in self.response:
+            if self.summed:
+                players.append(player_data)
+            else:
+                if player_data.get("previousTeamsForTournament"):
+                    for team_data in player_data["previousTeamsForTournament"]:
+                        players.append(team_data)
+                else:
+                    players.append(player_data)
+
+        return players
+
+
 class PlayersGameTime(Endpoint):
+    """Fetches and parses time one ice statistics for Liiga players.
+
+    See docs/players_gametime.md for detailed documentation and examples.
+    """
     GAMETYPE_OPTIONS = {
         "regularseason": "runkosarja",
         "playoff": "playoffs",
@@ -223,15 +378,37 @@ class PlayersGameTime(Endpoint):
 
     gametype_literal = Literal["regularseason", "playoff", "preseason", "playout", "qualification"]
 
-    def __init__(self, season: str, gametype: gametype_literal = "regularseason"):
+    def __init__(self, start_season: str, end_season: str, gametype: gametype_literal = "regularseason", summed: bool = True):
         if gametype not in self.GAMETYPE_OPTIONS:
             raise ValueError(f"Invalid gametype: {gametype}. Choose one of {list(self.GAMETYPE_OPTIONS.keys())}")
         gtype = self.GAMETYPE_OPTIONS[gametype]
-        url_str: str = f"players/stats/summed/{season}/{season}/{gtype}/false?team=&dataType=gameTimes&splitTeams=true"
+        self.summed = summed
+        url_str: str = f"players/stats/summed/{start_season}/{end_season}/{gtype}/false?team=&dataType=gameTimes&splitTeams=true"
         super().__init__(endpoint_name="PlayersGameTime", url_str=url_str)
+
+    
+    def _parse(self) -> list[dict]:
+        players = []
+
+        for player_data in self.response:
+            if self.summed:
+                players.append(player_data)
+            else:
+                if player_data.get("previousTeamsForTournament"):
+                    for team_data in player_data["previousTeamsForTournament"]:
+                        players.append(team_data)
+                else:
+                    players.append(player_data)
+
+        return players
 
 
 class PlayersSkating(Endpoint):
+    """Fetches and parses skating statistics for Liiga players.
+
+    See docs/players_skating.md for detailed documentation and examples.
+    """
+    
     GAMETYPE_OPTIONS = {
         "regularseason": "runkosarja",
         "playoff": "playoffs",
@@ -242,15 +419,36 @@ class PlayersSkating(Endpoint):
 
     gametype_literal = Literal["regularseason", "playoff", "preseason", "playout", "qualification"]
 
-    def __init__(self, season: str, gametype: gametype_literal = "regularseason"):
+    def __init__(self, start_season: str, end_season: str, gametype: gametype_literal = "regularseason", summed: bool = True):
         if gametype not in self.GAMETYPE_OPTIONS:
             raise ValueError(f"Invalid gametype: {gametype}. Choose one of {list(self.GAMETYPE_OPTIONS.keys())}")
         gtype = self.GAMETYPE_OPTIONS[gametype]
-        url_str: str = f"players/stats/summed/{season}/{season}/{gtype}/false?team=&dataType=skatingStats&splitTeams=true"
+        self.summed = summed
+        url_str: str = f"players/stats/summed/{start_season}/{end_season}/{gtype}/false?team=&dataType=skatingStats&splitTeams=true"
         super().__init__(endpoint_name="PlayersSkating", url_str=url_str)
+
+    
+    def _parse(self) -> list[dict]:
+        players = []
+
+        for player_data in self.response:
+            if self.summed:
+                players.append(player_data)
+            else:
+                if player_data.get("previousTeamsForTournament"):
+                    for team_data in player_data["previousTeamsForTournament"]:
+                        players.append(team_data)
+                else:
+                    players.append(player_data)
+
+        return players
 
 
 class PlayersAdvanced(Endpoint):
+    """Fetches and parses advanced statistics for Liiga players.
+
+    See docs/players_advanced.md for detailed documentation and examples.
+    """
     GAMETYPE_OPTIONS = {
         "regularseason": "runkosarja",
         "playoff": "playoffs",
@@ -261,12 +459,30 @@ class PlayersAdvanced(Endpoint):
 
     gametype_literal = Literal["regularseason", "playoff", "preseason", "playout", "qualification"]
 
-    def __init__(self, season: str, gametype: gametype_literal = "regularseason"):
+    def __init__(self, start_season: str, end_season, gametype: gametype_literal = "regularseason", summed: bool = True):
         if gametype not in self.GAMETYPE_OPTIONS:
             raise ValueError(f"Invalid gametype: {gametype}. Choose one of {list(self.GAMETYPE_OPTIONS.keys())}")
         gtype = self.GAMETYPE_OPTIONS[gametype]
-        url_str: str = f"players/stats/summed/{season}/{season}/{gtype}/false?team=&dataType=advancedStats&splitTeams=true"
+        self.summed = summed
+        url_str: str = f"players/stats/summed/{start_season}/{end_season}/{gtype}/false?team=&dataType=advancedStats&splitTeams=true"
         super().__init__(endpoint_name="PlayersAdvanced", url_str=url_str)
+
+
+    def _parse(self) -> list[dict]:
+        players = []
+
+        for player_data in self.response:
+            if self.summed:
+                players.append(player_data)
+            else:
+                if player_data.get("previousTeamsForTournament"):
+                    for team_data in player_data["previousTeamsForTournament"]:
+                        players.append(team_data)
+                else:
+                    players.append(player_data)
+
+        return players
+
 
 # GAMES RESULTS AND SCHEDULE ENDPOINTS 
 
