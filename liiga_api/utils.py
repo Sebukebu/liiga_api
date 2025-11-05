@@ -14,6 +14,22 @@ def flatten_dict(d, parent_key="", skip_keys=None): # Recusive flattening for en
             return out
 
 
+def player_stat_parse(endpoint) -> list[dict]:
+    players = []
+
+    if endpoint.summed:
+        players.extend(endpoint.response)
+
+    else:
+        for player_data in endpoint.response:
+            previous_teams = player_data.get("previousTeamsForTournament")
+            if previous_teams:
+                players.extend(previous_teams)
+            else:
+                players.append(player_data)
+    return players
+
+
 def search_playerid_by_name(name: str):
     pass
 

@@ -3,7 +3,7 @@ import requests
 import pandas as pd
 import json
 from typing import Optional, Dict, Any, Literal
-from liiga_api.utils import flatten_dict
+from liiga_api.utils import flatten_dict, player_stat_parse
 
 
 
@@ -80,6 +80,11 @@ class Endpoint:
         """Return raw unparsed response for debugging or own implementations."""
         return self.response
     
+    def clear_cache(self) -> None:
+        del self.response
+        del self.data
+        return None
+
 
 
 # PLAYER ENDPOINTS
@@ -183,19 +188,9 @@ class PlayersBasicStats(Endpoint):
 
 
     def _parse(self) -> list[dict]:
-        players = []
-
-        if self.summed:
-            players.extend(self.response)
-
-        else:
-            for player_data in self.response:
-                previous_teams = player_data.get("previousTeamsForTournament")
-                if previous_teams:
-                    players.extend(previous_teams)
-                else:
-                    players.append(player_data)
-        return players
+        
+        player_stat_parse(self)
+        
     
 
 class PlayersGoals(Endpoint):
@@ -224,19 +219,8 @@ class PlayersGoals(Endpoint):
 
 
     def _parse(self) -> list[dict]:
-        players = []
-
-        if self.summed:
-            players.extend(self.response)
-
-        else:
-            for player_data in self.response:
-                previous_teams = player_data.get("previousTeamsForTournament")
-                if previous_teams:
-                    players.extend(previous_teams)
-                else:
-                    players.append(player_data)
-        return players
+        
+        player_stat_parse(self)
 
 
 class PlayersShots(Endpoint):
@@ -265,19 +249,8 @@ class PlayersShots(Endpoint):
 
     
     def _parse(self) -> list[dict]:
-        players = []
-
-        if self.summed:
-            players.extend(self.response)
-
-        else:
-            for player_data in self.response:
-                previous_teams = player_data.get("previousTeamsForTournament")
-                if previous_teams:
-                    players.extend(previous_teams)
-                else:
-                    players.append(player_data)
-        return players
+        
+        player_stat_parse(self)
 
 
 class PlayersPasses(Endpoint):
@@ -305,19 +278,8 @@ class PlayersPasses(Endpoint):
 
     
     def _parse(self) -> list[dict]:
-        players = []
-
-        if self.summed:
-            players.extend(self.response)
-
-        else:
-            for player_data in self.response:
-                previous_teams = player_data.get("previousTeamsForTournament")
-                if previous_teams:
-                    players.extend(previous_teams)
-                else:
-                    players.append(player_data)
-        return players
+        
+        player_stat_parse(self)
 
 
 class PlayersPenalties(Endpoint):
@@ -345,19 +307,8 @@ class PlayersPenalties(Endpoint):
 
 
     def _parse(self) -> list[dict]:
-        players = []
-
-        if self.summed:
-            players.extend(self.response)
-
-        else:
-            for player_data in self.response:
-                previous_teams = player_data.get("previousTeamsForTournament")
-                if previous_teams:
-                    players.extend(previous_teams)
-                else:
-                    players.append(player_data)
-        return players
+        
+        player_stat_parse(self)
 
 
 class PlayersGameTime(Endpoint):
@@ -385,19 +336,8 @@ class PlayersGameTime(Endpoint):
 
     
     def _parse(self) -> list[dict]:
-        players = []
-
-        if self.summed:
-            players.extend(self.response)
-
-        else:
-            for player_data in self.response:
-                previous_teams = player_data.get("previousTeamsForTournament")
-                if previous_teams:
-                    players.extend(previous_teams)
-                else:
-                    players.append(player_data)
-        return players
+        
+        player_stat_parse(self)
 
 
 class PlayersSkating(Endpoint):
@@ -426,19 +366,8 @@ class PlayersSkating(Endpoint):
 
     
     def _parse(self) -> list[dict]:
-        players = []
-
-        if self.summed:
-            players.extend(self.response)
-
-        else:
-            for player_data in self.response:
-                previous_teams = player_data.get("previousTeamsForTournament")
-                if previous_teams:
-                    players.extend(previous_teams)
-                else:
-                    players.append(player_data)
-        return players
+        
+        player_stat_parse(self)
 
 
 class PlayersAdvanced(Endpoint):
@@ -466,20 +395,8 @@ class PlayersAdvanced(Endpoint):
 
 
     def _parse(self) -> list[dict]:
-        players = []
-
-        if self.summed:
-            players.extend(self.response)
-
-        else:
-            for player_data in self.response:
-                previous_teams = player_data.get("previousTeamsForTournament")
-                if previous_teams:
-                    players.extend(previous_teams)
-                else:
-                    players.append(player_data)
-        return players
-
+        
+        player_stat_parse(self)
 
 # GAMES RESULTS AND SCHEDULE ENDPOINTS 
 
