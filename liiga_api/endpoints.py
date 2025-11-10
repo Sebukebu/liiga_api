@@ -538,7 +538,120 @@ class GamesResults(Endpoint):
         url_str: str = f"games?tournament={gtype}&season={season}"
         super().__init__(endpoint_name="GamesResults", url_str=url_str)
 
-# SPLIT GAMERESULTS INTO MULTIPLE CLASSES
+    def _parse(self):
+        response = self.response
+        games = []
+
+        TEAM_FIELDS = [
+            "id", "teamPlaceholder", "teamName", "goals", "timeOut",
+            "powerplayInstances", "powerplayGoals", "shortHandedInstances",
+            "shortHandedGoals", "expectedGoals", "ranking",
+        ]
+
+        def extract_team(prefix, team):
+            data = {f"{prefix}{field[0].upper() + field[1:]}": team.get(field) for field in TEAM_FIELDS}
+            logos = team.get("logos", {})
+            data[f"{prefix}DarkBgLogo"] = logos.get("darkBg")
+            data[f"{prefix}LightBgLogo"] = logos.get("lightBg")
+            return data
+        
+        for r in response:
+            hometeam = r.get("homeTeam", {})
+            awayteam = r.get("awayTeam", {})
+            homedata = extract_team("home", hometeam)
+            awaydata = extract_team("away", awayteam)
+            data = {
+                "gameId": r.get("id"),
+                "season": r.get("season"),
+                "start": r.get("start"),
+                "end": r.get("end"),
+                **homedata,
+                **awaydata
+            }
+            games.append(data)
+
+        return games
+    
+
+class GamesGoalEvents(Endpoint):
+    GAMETYPE_OPTIONS = {
+        "regularseason": "runkosarja",
+        "playoff": "playoffs",
+        "preseason": "valmistavat_ottelut",
+        "playout": "playout",
+        "qualification": "qualifications",
+        "chl": "chl"
+    }
+    gametype_literal = Literal["regularseason", "playoff", "preseason", "playout", "qualification", "chl"]
+    def __init__(self, season: str, gametype: gametype_literal = "regularseason"):
+        if gametype not in self.GAMETYPE_OPTIONS:
+            raise ValueError(f"Invalid gametype: {gametype}. Choose one of {list(self.GAMETYPE_OPTIONS.keys())}")
+        gtype = self.GAMETYPE_OPTIONS[gametype]
+        url_str: str = f"games?tournament={gtype}&season={season}"
+        super().__init__(endpoint_name="GamesGoalEvents", url_str=url_str)
+
+
+    def _parse(self) -> list[dict]:
+        response = self.response
+        all_goal_events = []
+
+        def parse_goal_events(events, team_type: str, game_id: int, season: str, hometeam, awayteam):
+            parsed = []
+            for e in events:
+                scorer = e.get("scorerPlayer", {}) or {}
+                assistants = e.get("assistantPlayers", []) or []
+
+                # Assign fixed assistant columns
+                assistant1 = assistants[0] if len(assistants) > 0 else {"playerId": None, "firstName": None, "lastName": None}
+                assistant2 = assistants[1] if len(assistants) > 1 else {"playerId": None, "firstName": None, "lastName": None}
+
+                parsed.append({
+                    "hometeam": hometeam,
+                    "awayTeam": awayteam,
+                    "gameId": game_id,
+                    "season": season,
+                    "teamType": team_type,
+                    "scorerId": e.get("scorerPlayerId"),
+                    "scorerFirstName": scorer.get("firstName"),
+                    "scorerLastName": scorer.get("lastName"),
+                    "scorerGoalsInSeason": e.get("goalsSoFarInSeason"),
+                    "logTime": e.get("logTime"),
+                    "gameTime": e.get("gameTime"),
+                    "period": e.get("period"),
+                    "eventId": e.get("eventId"),
+                    "goalTypes": e.get("goalTypes", []),
+                    "assistant1Id": assistant1.get("playerId"),
+                    "assistant1FirstName": assistant1.get("firstName"),
+                    "assistant1LastName": assistant1.get("lastName"),
+                    "assistant2Id": assistant2.get("playerId"),
+                    "assistant2FirstName": assistant2.get("firstName"),
+                    "assistant2LastName": assistant2.get("lastName"),
+                    "plusPlayerIds": e.get("plusPlayerIds"),
+                    "minusPlayerIds": e.get("minusPlayerIds"),
+                    "homeTeamScore": e.get("homeTeamScore"),
+                    "awayTeamScore": e.get("awayTeamScore"),
+                    "videoClipUrl": e.get("videoClipUrl"),
+                    "videoThumbnailUrl": e.get("videoThumbnailUrl")
+                })
+            return parsed
+
+        for r in response:
+            game_id = r.get("id")
+            season = r.get("season")
+            hometeam = r.get("homeTeam").get("teamId")
+            awayteam = r.get("awayTeam").get("teamId")
+
+            home_events = parse_goal_events(r.get("homeTeam", {}).get("goalEvents", []),
+                                            "home", game_id, season, hometeam, awayteam)
+            away_events = parse_goal_events(r.get("awayTeam", {}).get("goalEvents", []),
+                                            "away", game_id, season, hometeam, awayteam)
+
+            all_goal_events.extend(home_events + away_events)
+
+        return all_goal_events
+
+
+
 
 
 # GAMESTAT ENDPOINTS
