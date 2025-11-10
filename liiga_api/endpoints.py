@@ -129,16 +129,103 @@ class PlayerGameLog(Endpoint):
         return games
 
 
-class PlayerInfo(Endpoint):
-    """Fetches and parses basic information for a Liiga player.
-
-    **Note:** This endpoint is not yet implemented. Check back for updates.
-    """
-
+class PlayerActiveSeasons(Endpoint):
     def __init__(self, player_id: str):
         url_str: str = f"players/info/{player_id}"
-        super().__init__(endpoint_name="PlayerInfo", url_str=url_str)
-        raise NotImplementedError("This endpoint is not yet implemented.")
+        super().__init__(endpoint_name="PlayerActiveSeasons", url_str=url_str)
+    
+    def _parse(self) -> list:
+        return self.response["activeSeasons"]
+
+
+class PlayerProfile(Endpoint):
+    def __init__(self, player_id: str):
+        url_str: str = f"players/info/{player_id}"
+        super().__init__(endpoint_name="PlayerProfile", url_str=url_str)
+    
+    def _parse(self) -> dict:
+        r = self.response
+        
+        profile = {
+            "birthCountry": r.get("birthLocality", {}).get("country", {}).get("name"),
+            "birthCountryCode": r.get("birthLocality", {}).get("country", {}).get("code"),
+            "birthLocality": r.get("birthLocality", {}).get("name"),
+            "dateOfBirth": r.get("dateOfBirth"),
+            "fihaId": r.get("fihaId"),
+            "firstName": r.get("firstName"),
+            "lastName": r.get("lastName"),
+            "handedness": r.get("handedness"),
+            "height": r.get("height"),
+            "isSuspended": r.get("isSuspended", False),
+            "isRemoved": r.get("isRemoved", False),
+            "nationality": r.get("nationality", {}).get("name"),
+            "nationalityCode": r.get("nationality", {}).get("code"),
+            "weight": r.get("weight")
+        }
+        return profile
+
+class PlayerTeamsPlayedFor(Endpoint):
+    def __init__(self, player_id: str):
+        url_str: str = f"players/info/{player_id}"
+        super().__init__(endpoint_name="PlayerTeamsPlayedFor", url_str=url_str)
+
+    def _parse_teams(self) -> list[dict]:
+        
+        teams_data = self.response.get("teams", {})
+        
+        teams = []
+        for season_key, team_info in teams_data.items():
+            teams.append({
+                "season": team_info["season"],
+                "teamId": team_info["teamId"],
+                "teamName": team_info["teamName"],
+                "slug": team_info["slug"],
+                "jersey": team_info.get("jersey"),
+                "position": team_info.get("position"),
+                "imageUrl": team_info.get("imageUrl")
+            })
+
+        return teams
+
+class PlayerStatsPerSeason(Endpoint):
+    
+    GAMETYPE_OPTIONS = {
+        "regularseason": "regular",
+        "playoff": "playoffs",
+        "practice": "practice",
+        "playout": "playout",
+        "qualification": "qualifications",
+        "all": "all"
+    }
+
+    gametype_literal = Literal["regularseason", "playoff", "preseason", "playout", "qualification"]
+    
+    def __init__(self, player_id: str, gametype: gametype_literal = "regularseason"):
+        self.player_id = player_id
+        self.gametype = gametype
+        url_str = f"players/info/{player_id}"
+        super().__init__(endpoint_name="PlayerStatsPerSeason", url_str=url_str)
+    
+    def _parse(self) -> list[dict]:
+        historical = self.response.get("historical", {})
+        
+        if self.gametype == "all":
+            all_stats = []
+            for gametype_key, seasons in historical.items():
+                if isinstance(seasons, list):
+                    for season in seasons:
+                        season_copy = season.copy()
+                        season_copy["gametype"] = gametype_key
+                        all_stats.append(season_copy)
+            #sort by season and gametype -> no summing, return multiple rows per season, one for each gametype
+            return sorted(all_stats, key=lambda x: (x["season"], x["gametype"]), reverse=True)
+        else:
+            stats = historical.get(self.gametype, [])
+
+            return [
+                {**season, "gametype": self.gametype} 
+                for season in stats
+            ]
 
 
 # PLAYERS SUMMED STATS
@@ -189,7 +276,7 @@ class PlayersBasicStats(Endpoint):
 
     def _parse(self) -> list[dict]:
         
-        player_stat_parse(self)
+        return player_stat_parse(self)
         
     
 
@@ -219,8 +306,8 @@ class PlayersGoals(Endpoint):
 
 
     def _parse(self) -> list[dict]:
-        
-        player_stat_parse(self)
+
+        return player_stat_parse(self)
 
 
 class PlayersShots(Endpoint):
@@ -250,7 +337,7 @@ class PlayersShots(Endpoint):
     
     def _parse(self) -> list[dict]:
         
-        player_stat_parse(self)
+        return player_stat_parse(self)
 
 
 class PlayersPasses(Endpoint):
@@ -279,7 +366,7 @@ class PlayersPasses(Endpoint):
     
     def _parse(self) -> list[dict]:
         
-        player_stat_parse(self)
+        return player_stat_parse(self)
 
 
 class PlayersPenalties(Endpoint):
@@ -308,7 +395,7 @@ class PlayersPenalties(Endpoint):
 
     def _parse(self) -> list[dict]:
         
-        player_stat_parse(self)
+        return player_stat_parse(self)
 
 
 class PlayersGameTime(Endpoint):
@@ -337,7 +424,7 @@ class PlayersGameTime(Endpoint):
     
     def _parse(self) -> list[dict]:
         
-        player_stat_parse(self)
+        return player_stat_parse(self)
 
 
 class PlayersSkating(Endpoint):
@@ -367,7 +454,7 @@ class PlayersSkating(Endpoint):
     
     def _parse(self) -> list[dict]:
         
-        player_stat_parse(self)
+        return player_stat_parse(self)
 
 
 class PlayersAdvanced(Endpoint):
@@ -396,7 +483,7 @@ class PlayersAdvanced(Endpoint):
 
     def _parse(self) -> list[dict]:
         
-        player_stat_parse(self)
+        return player_stat_parse(self)
 
 # GAMES RESULTS AND SCHEDULE ENDPOINTS 
 
@@ -451,6 +538,8 @@ class GamesResults(Endpoint):
         url_str: str = f"games?tournament={gtype}&season={season}"
         super().__init__(endpoint_name="GamesResults", url_str=url_str)
 
+# SPLIT GAMERESULTS INTO MULTIPLE CLASSES
+
 
 # GAMESTAT ENDPOINTS
 
@@ -458,6 +547,9 @@ class GameInfo(Endpoint):
     def __init__(self, game_id: str, season: str):
         url_str: str = f"games/{season}/{game_id}"
         super().__init__(endpoint_name="GameInfo", url_str=url_str)
+
+
+# SPLIT INTO MULTIPLE CLASSES
 
 
 class GameStatsBase(Endpoint):
