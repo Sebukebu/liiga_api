@@ -1,5 +1,3 @@
-from endpoints import PlayerActiveSeasons, PlayerProfile, PlayerTeamsPlayedFor, PlayerStatsPerSeason
-
 
 class Player():
     pass
