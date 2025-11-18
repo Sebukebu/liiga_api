@@ -88,6 +88,10 @@ class Endpoint:
         del self.response
         del self.data
         return None
+    
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(url={self.BASE_URL}/{self.url_str})"
+
 
 
 
@@ -175,7 +179,7 @@ class PlayerTeamsPlayedFor(Endpoint):
         url_str: str = f"players/info/{player_id}"
         super().__init__(endpoint_name="PlayerTeamsPlayedFor", url_str=url_str)
 
-    def _parse_teams(self) -> list[dict]:
+    def _parse(self) -> list[dict]:
         
         teams_data = self.response.get("teams", {})
         
@@ -1377,13 +1381,60 @@ class TeamsAllTime(Endpoint):
         return results
 
 
-class TeamInfo(Endpoint):
+class TeamsInfo(Endpoint):
+
+    _COLUMNS = {
+    "id": "teamId",
+    "name": "teamName",
+    "contact_info": "contactInfo",
+    "country.code": "countryCode",
+    "country.name": "countryName",
+    "current_venue_capacity": "currentVenueCapacity",
+    "general_info": "generalInfo",
+    "url": "url",
+    "locality": "locality",
+    "logo": "logo",
+    "short_name": "shortName",
+    "slug": "slug"
+    }
+
     def __init__(self):
         url_str: str = f"teams/info"
-        super().__init__(endpoint_name="TeamInfo", url_str=url_str)
+        super().__init__(endpoint_name="TeamsInfo", url_str=url_str)
 
+    def _parse(self) -> list[dict]:
+        if not isinstance(self.response, dict):
+            raise LiigaAPIError(f"Unexpected response type for {self.endpoint_name}: {type(self.response)}")
+        
+        r = self.response['teams']
+        data = []
 
-class TeamRosters(Endpoint):
+        for team in r.values():
+            data.append(ResponseParser._parse_record(team, self._COLUMNS))
+
+        return data
+
+class TeamsStatsPerSeason(Endpoint):
+
+    def __init__(self):
+        url_str: str = f"teams/info"
+        super().__init__(endpoint_name="TeamsStatsPerSeason", url_str=url_str)
+
+    def _parse(self) -> list[dict]:
+        if not isinstance(self.response, dict):
+            raise LiigaAPIError(f"Unexpected response type for {self.endpoint_name}: {type(self.response)}")
+        
+        r = self.response['teams']
+        data = []
+
+        for team in r.values():
+            stats = team['teamtournamentstats']
+            for row in stats:
+                data.append(row)
+
+        return data
+
+class TeamsRosters(Endpoint):
     GAMETYPE_OPTIONS = {
         "regularseason": "runkosarja",
         "playoff": "playoffs",
@@ -1393,13 +1444,14 @@ class TeamRosters(Endpoint):
     }
 
     gametype_literal = Literal["regularseason", "playoff", "preseason", "playout", "qualification"]
-    def __init__(self, season: str, gametype: gametype_literal, team_id: str = ""):
+    def __init__(self, start_season: str, end_season: str, gametype: gametype_literal):
         if gametype not in self.GAMETYPE_OPTIONS:
             raise ValueError(f"Invalid gametype: {gametype}. Choose one of {list(self.GAMETYPE_OPTIONS.keys())}")
         
         gtype = self.GAMETYPE_OPTIONS[gametype]
-        url_str: str = f"players/info?tournament={gtype}&fromSeason={season}&toSeason={season}&team={team_id}"
-        super().__init__(endpoint_name="TeamRosters", url_str=url_str)
+        url_str: str = f"players/info?tournament={gtype}&fromSeason={start_season}&toSeason={end_season}&team="
+        super().__init__(endpoint_name="TeamsRosters", url_str=url_str)
+
 
 
 # Season team stats
