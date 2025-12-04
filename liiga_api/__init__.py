@@ -22,6 +22,8 @@ from .endpoints.players import (
 
 
 from .endpoints.games import (
+    SkaterGameStats,
+    GoalieGameStats,
     GamesResults,
     GameGoalEvents,
     GamesGoalEvents,
@@ -75,6 +77,8 @@ __all__ = [
     "AllPlayers",
     
     # Game endpoints
+    "SkaterGameStats",
+    "GoalieGameStats",
     "GamesResults",
     "GameGoalEvents",
     "GamesGoalEvents",
