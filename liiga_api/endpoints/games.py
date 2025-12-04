@@ -492,7 +492,6 @@ class SkaterGameStats(Endpoint):
         "period.faceoffsCenterWon": "faceoffsCenterWon",
         "period.faceoffsDefenceTotal": "faceoffsDefenceTotal",
         "period.faceoffsDefenceWon": "faceoffsDefenceWon",
-        "period.faceoffsDefenceTotal": "faceoffsDefenceTotal",
         "period.faceoffsOffenceTotal": "faceoffsOffenceTotal",
         "period.faceoffsOffenceWon": "faceoffsOffenceWon",
         "period.fsZoneStartsDz": "fsZoneStartsDz",
@@ -560,10 +559,12 @@ class SkaterGameStats(Endpoint):
 
         for side in ["homeTeam", "awayTeam"]:
             team_periods = self.response.get(side, [])
-            for period, puck_period in zip(team_periods, puck_stats):
+            for i, period in enumerate(team_periods):
                 team_stats = ResponseParser._parse_record(period, self._PERIOD_TEAM_CONTEXT)
                 team_stats['teamId'] = team_stats['teamId'].split(':')[0]
 
+                # Get puck stats for this period if available, otherwise use empty dict
+                puck_period = puck_stats[i] if i < len(puck_stats) else {}
 
                 for player in period.get("periodPlayerStats", []):
                     player_stats = ResponseParser._parse_record(player, self._PERIOD_PLAYERSTAT_KEYS)
@@ -574,10 +575,9 @@ class SkaterGameStats(Endpoint):
                     if period_number not in periods_out:
                         periods_out[period_number] = []
                     periods_out[period_number].append(player_stats)
-                    
-
 
         return [periods_out[p] for p in sorted(periods_out.keys()) if periods_out[p]]
+    
     
     def _parse_sum_players(self) -> list[dict]:
         by_period = self._parse_by_period()
